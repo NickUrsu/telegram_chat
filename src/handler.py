@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 import logging
 
 from .telegram import extract_message, download_file, send_message, send_photo
-from .openai_client import call_openai, calculate_tdee
+from .openai_client import call_openai, calculate_tdee, get_report_feedback
 from .storage import save_image, save_food_log, get_last_log, delete_log
 from .settings import S3_BUCKET
 from .reports import query_logs, aggregate_by_day, build_text_report, get_daily_totals
@@ -27,7 +27,7 @@ START_MSG = (
     "• Send a <b>photo</b> of your meal — I'll extract nutrition info automatically\n"
     "• Send a <b>text message</b> like <i>\"2 eggs, toast with butter, coffee\"</i>\n\n"
     "<b>📋 Commands</b>\n"
-    "/daily — today's nutrition summary + chart\n"
+    "/daily — today's nutrition summary\n"
     "/weekly — 7-day avg nutrition summary + chart\n"
     "/delete — remove the last logged meal (within 5 min)\n"
     "/register — set up your profile & get your daily calorie target\n"
@@ -61,19 +61,32 @@ def respond(status=200, body="ok"):
 
 
 def handle_report(user_id: str, period: str, days: int):
-    """Fetch logs, send text report, then send a chart image."""
+    """Fetch logs, build text report, optionally send chart, optionally add AI feedback."""
     logger.info(f"Generating {period} report for user={user_id}")
     try:
         logs = query_logs(user_id, days)
         aggregated = aggregate_by_day(logs)
 
         text = build_text_report(aggregated, period)
+
+        # Only send chart for weekly reports — daily chart adds little value
+        if period == "weekly":
+            chart_bytes = generate_chart(aggregated, period)
+            if chart_bytes:
+                send_photo(user_id, chart_bytes)
+
+        # Append personalised AI feedback if the user has a complete profile with a goal
+        profile = get_user_profile(str(user_id))
+        if profile and profile.get("goal") and profile.get("kcal_target"):
+            logger.info(f"Fetching AI feedback for user={user_id}, period={period}")
+            try:
+                feedback = get_report_feedback(period, text, profile)
+                text += f"\n\n💬 <b>Coach's take:</b>\n{feedback}"
+            except Exception:
+                logger.error("Failed to get AI report feedback", exc_info=True)
+                # Non-fatal — still send the plain report
+
         send_message(user_id, text)
-
-        chart_bytes = generate_chart(aggregated, period)
-        if chart_bytes:
-            send_photo(user_id, chart_bytes)
-
         logger.info(f"{period} report sent to user={user_id}")
     except Exception:
         logger.error(f"Error generating {period} report", exc_info=True)
