@@ -131,7 +131,7 @@ def get_report_feedback(period: str, report_text: str, profile: dict) -> str:
             {"role": "system", "content": system_prompt},
             {"role": "user",   "content": user_prompt},
         ],
-        "temperature": 0.7,
+        "temperature": 1.0,
         "max_tokens": 220,
     }
 
