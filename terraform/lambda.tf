@@ -5,7 +5,7 @@ resource "aws_lambda_function" "bot" {
   runtime       = "python3.11"
 
  filename         = "${path.module}/lambda_build/lambda.zip"
-  timeout       = 30
+  timeout       = 60
   memory_size   = 512
   source_code_hash = filebase64sha256("${path.module}/lambda_build/lambda.zip")
 
@@ -31,4 +31,10 @@ resource "aws_cloudwatch_log_group" "lambda_logs" {
   retention_in_days = 14
 
   tags = local.common_tags
+}
+
+resource "aws_lambda_event_source_mapping" "sqs" {
+  event_source_arn = aws_sqs_queue.bot.arn
+  function_name    = aws_lambda_function.bot.arn
+  batch_size       = 1
 }

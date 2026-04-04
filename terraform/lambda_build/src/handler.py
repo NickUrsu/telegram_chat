@@ -157,6 +157,24 @@ def handle_profile_response(user_id: str, text: str):
 # ── Lambda entrypoint ─────────────────────────────────────────────────────────
 
 def lambda_handler(event, context, debug=False):
+    """
+    Main Lambda entry point.
+    event: Either an SQS event (production) or an API Gateway event (local testing)
+    """
+    # Unwrap SQS trigger (body is nested in Records[0])
+    if "Records" in event:
+        # SQS sends the original Telegram payload as a stringified body
+        sqs_body = event["Records"][0]["body"]
+        # In our mapping template, we passed body through urlEncode? 
+        # Actually in the plan we wrote Action=SendMessage&MessageBody=$util.urlEncode($input.body)
+        # Wait, if we use formulation Action=SendMessage, SQS stores it. Then lambda retrieves it.
+        # But wait, url encoded? Let's check how body is formatted.
+        import urllib.parse
+        if sqs_body.startswith("Action=SendMessage&MessageBody="):
+            parsed = urllib.parse.parse_qs(sqs_body)
+            sqs_body = parsed["MessageBody"][0]
+        event = {"body": sqs_body}
+
     logger.info("Received event")
     try:
         user_id, msg_type, payload = extract_message(event)

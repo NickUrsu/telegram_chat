@@ -77,7 +77,32 @@ resource "aws_iam_role_policy" "lambda_policy" {
           "ssm:GetParameter"
         ]
         Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "sqs:ReceiveMessage",
+          "sqs:DeleteMessage",
+          "sqs:GetQueueAttributes"
+        ]
+        Resource = aws_sqs_queue.bot.arn
       }
     ]
+  })
+}
+
+resource "aws_iam_role" "apigw_sqs_role" {
+  name = "${var.project_name}-apigw-sqs-role"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{ Effect = "Allow", Principal = { Service = "apigateway.amazonaws.com" }, Action = "sts:AssumeRole" }]
+  })
+}
+
+resource "aws_iam_role_policy" "apigw_sqs_policy" {
+  role = aws_iam_role.apigw_sqs_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{ Effect = "Allow", Action = "sqs:SendMessage", Resource = aws_sqs_queue.bot.arn }]
   })
 }
